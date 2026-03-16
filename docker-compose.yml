@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: nest-base-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_DATABASE:-database_db}
+      TZ: America/La_Paz
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_DATABASE:-database_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nest-base-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: ${PORT:-3001}
+      PATH_SUBDOMAIN: ${PATH_SUBDOMAIN:-api}
+      REQUEST_TIMEOUT_IN_SECONDS: ${REQUEST_TIMEOUT_IN_SECONDS:-30}
+      URL_FRONTEND: ${URL_FRONTEND:-http://localhost:3000}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_DATABASE: ${DB_DATABASE:-database_db}
+      DB_SCHEMA: ${DB_SCHEMA:-}
+      DB_SCHEMA_USUARIOS: ${DB_SCHEMA_USUARIOS:-}
+      DB_SCHEMA_PARAMETRICAS: ${DB_SCHEMA_PARAMETRICAS:-}
+      DB_SCHEMA_ENTIDADES: ${DB_SCHEMA_ENTIDADES:-}
+      DB_SCHEMA_RECLAMOS: ${DB_SCHEMA_RECLAMOS:-}
+      DB_USE_SSL: ${DB_USE_SSL:-false}
+      DB_VERIFY_SSL: ${DB_VERIFY_SSL:-false}
+      LOG_SQL: ${LOG_SQL:-true}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-300000}
+      REFRESH_TOKEN_NAME: ${REFRESH_TOKEN_NAME:-jid}
+      REFRESH_TOKEN_EXPIRES_IN: ${REFRESH_TOKEN_EXPIRES_IN:-3600000}
+      REFRESH_TOKEN_ROTATE_IN: ${REFRESH_TOKEN_ROTATE_IN:-900000}
+      REFRESH_TOKEN_SECURE: ${REFRESH_TOKEN_SECURE:-false}
+      REFRESH_TOKEN_DOMAIN: ${REFRESH_TOKEN_DOMAIN:-}
+      REFRESH_TOKEN_PATH: ${REFRESH_TOKEN_PATH:-/}
+      REFRESH_TOKEN_REVISIONS: ${REFRESH_TOKEN_REVISIONS:-*/5 * * * *}
+    ports:
+      - "${PORT:-3001}:3001"
+    command: >
+      sh -c "
+      until pg_isready -h postgres -p 5432 -U ${DB_USERNAME:-postgres} -d ${DB_DATABASE:-database_db}; do
+        echo 'Waiting for postgres...';
+        sleep 2;
+      done &&
+      psql postgresql://${DB_USERNAME:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_DATABASE:-database_db} -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";' &&
+      npm run migrations:run &&
+      npm run seeds:run &&
+      node dist/src/main.js
+      "
+
+volumes:
+  postgres_data:
